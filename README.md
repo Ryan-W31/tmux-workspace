@@ -38,6 +38,28 @@ set -g @plugin 'Prometheus1400/tmux-picker'
 They work independently, and their default key bindings do not conflict. See
 the tmux-picker README for its requirements and configuration.
 
+### Create workspaces from tmux-picker
+
+Recent tmux-picker versions support third-party Lua plugins. Add this to
+`${XDG_CONFIG_HOME:-$HOME/.config}/tmux-picker/init.lua` to enable the optional
+workspace view:
+
+```lua
+return {
+  plugins = {
+    {
+      repo = 'Ryan-W31/tmux-workspace',
+      entry = 'tmux-picker/plugin.lua',
+    },
+  },
+}
+```
+
+The picker adds a `C-n new workspace` view. Open it, type a session name, and
+press Enter to create the workspace with the configured template. The sessions
+view continues to switch to existing sessions normally. tmux-picker's normal
+new-session behavior remains available when this extension is not installed.
+
 ## Template format
 
 A template is a Bash script run with `SESSION_NAME` and `WORKSPACE_DIR` set.
