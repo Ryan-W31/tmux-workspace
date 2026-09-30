@@ -10,10 +10,15 @@ fi
 if ! tmux show-option -gq @workspace-key >/dev/null 2>&1; then
 	tmux set-option -gq @workspace-key C-a
 fi
+workspace_key="$(tmux show-option -gqv @workspace-key)"
+
+shell_quote() {
+	printf "'%s'" "${1//\'/\'\\\'\'}"
+}
 
 tmux set-environment -gF TMUX_WORKSPACE_PLUGIN_DIR "#{@workspace-plugin-dir}"
 tmux set-environment -gF TMUX_WORKSPACE_ROOT "#{@workspace-root}"
 tmux set-environment -gF TMUX_WORKSPACE_TEMPLATE "#{@workspace-template}"
 
-tmux bind-key -T prefix "#{@workspace-key}" \
-	display-popup -E -w 80% -h 60% "#{@workspace-plugin-dir}/bin/tmux-workspace"
+tmux bind-key -T prefix "$workspace_key" \
+	display-popup -E -w 80% -h 60% "$(shell_quote "$plugin_dir/bin/tmux-workspace")"
