@@ -1,0 +1,131 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+plugin_dir="${TMUX_WORKSPACE_PLUGIN_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+default_template="$plugin_dir/templates/default.sh"
+workspace_root="${TMUX_WORKSPACE_ROOT:-$HOME/Projects}"
+template="${TMUX_WORKSPACE_TEMPLATE:-}"
+template="${template:-$default_template}"
+
+usage() {
+  cat <<'USAGE'
+Usage: tmux-workspace [session-name [directory [template]]]
+
+With no arguments, prompt for a session name and directory. The directory
+defaults to <workspace-root>/<session-name>; the root defaults to ~/Projects.
+USAGE
+}
+
+fail() {
+  printf 'tmux-workspace: %s\n' "$*" >&2
+  exit 1
+}
+
+expand_home() {
+  case "$1" in
+    '~') printf '%s\n' "$HOME" ;;
+    '~/'*) printf '%s/%s\n' "$HOME" "${1#~/}" ;;
+    *) printf '%s\n' "$1" ;;
+  esac
+}
+
+session_name="${1:-}"
+directory="${2:-}"
+if [[ $# -gt 3 ]]; then
+  usage >&2
+  exit 2
+fi
+if [[ $# -ge 3 ]]; then template="$3"; fi
+
+if [[ -z "$session_name" ]]; then
+  read -r -p 'Session name: ' session_name
+  [[ -n "$session_name" ]] || fail 'a session name is required'
+  read -r -p "Directory [${workspace_root%/}/$session_name]: " directory
+  directory="${directory:-${workspace_root%/}/$session_name}"
+fi
+
+[[ "$session_name" =~ ^[A-Za-z0-9_.-]+$ ]] || fail 'session name may contain only letters, numbers, ., _, and -'
+if [[ -z "$directory" ]]; then
+  directory="${workspace_root%/}/$session_name"
+fi
+directory="$(expand_home "$directory")"
+template="$(expand_home "$template")"
+
+command -v tmux >/dev/null 2>&1 || fail 'tmux is not installed or not in PATH'
+[[ -f "$template" && -r "$template" ]] || fail "template is not readable: $template"
+if tmux has-session -t "=$session_name" 2>/dev/null; then
+  fail "a tmux session named '$session_name' already exists"
+fi
+
+if [[ -e "$directory" ]]; then
+  [[ -d "$directory" ]] || fail "path exists and is not a directory: $directory"
+  [[ -z "$(find "$directory" -mindepth 1 -maxdepth 1 -print -quit)" ]] || \
+    fail "directory is not empty: $directory"
+else
+  mkdir -p -- "$directory"
+fi
+directory="$(cd "$directory" && pwd -P)"
+
+# Template helpers operate relative to the new workspace. Path-taking helpers
+# reject absolute paths and '..' components so a typo cannot write outside it.
+workspace_path() {
+  local relative="$1"
+  [[ -n "$relative" && "$relative" != /* ]] || fail "expected a relative workspace path: $relative"
+  case "/$relative/" in
+    */../*) fail "workspace path cannot contain '..': $relative" ;;
+  esac
+  printf '%s/%s\n' "$directory" "$relative"
+}
+
+dir() {
+  local path
+  path="$(workspace_path "$1")"
+  mkdir -p -- "$path"
+}
+
+file() {
+  local path
+  path="$(workspace_path "$1")"
+  mkdir -p -- "$(dirname "$path")"
+  : >> "$path"
+}
+
+write() {
+  local path
+  path="$(workspace_path "$1")"
+  mkdir -p -- "$(dirname "$path")"
+  cat > "$path"
+}
+
+clone() {
+  local url="$1" relative="${2:-}" destination
+  command -v git >/dev/null 2>&1 || fail 'git is required by this template'
+  if [[ -z "$relative" ]]; then
+    relative="${url##*/}"
+    relative="${relative%.git}"
+  fi
+  destination="$(workspace_path "$relative")"
+  mkdir -p -- "$(dirname "$destination")"
+  git clone -- "$url" "$destination"
+}
+
+symlink() {
+  local source="$1" relative_link="$2" link_path
+  link_path="$(workspace_path "$relative_link")"
+  mkdir -p -- "$(dirname "$link_path")"
+  ln -s -- "$source" "$link_path"
+}
+
+export SESSION_NAME="$session_name"
+export WORKSPACE_DIR="$directory"
+
+# Templates are user-authored shell scripts with the helper functions above.
+# shellcheck disable=SC1090
+source "$template"
+
+tmux new-session -d -s "$session_name" -c "$directory"
+if [[ -n "${TMUX:-}" ]]; then
+  tmux switch-client -t "=$session_name"
+else
+  tmux attach-session -t "=$session_name"
+fi
