@@ -18,6 +18,8 @@ set -g @workspace-key 'C-a'
 Then press `prefix` + `C-a` and enter a session name and directory. The
 directory defaults to `<workspace-root>/<session-name>`. `@workspace-template`
 is optional; by default the plugin uses `templates/default.sh`.
+Session names may contain letters, numbers, underscores, and hyphens. Periods
+are rejected because tmux changes them to underscores.
 
 ## Recommended companion: tmux-picker
 
@@ -62,7 +64,8 @@ new-session behavior remains available when this extension is not installed.
 
 ## Template format
 
-A template is a Bash script run with `SESSION_NAME` and `WORKSPACE_DIR` set.
+A template is a Bash script run from the workspace directory in a subshell,
+with `SESSION_NAME` and `WORKSPACE_DIR` set.
 It can use these helpers:
 
 ```bash
@@ -76,7 +79,8 @@ symlink ~/.config/nvim nvim-config
 ```
 
 `dir`, `file`, `write`, and the destination passed to `clone` or `symlink` are
-workspace-relative. These helpers reject absolute paths and `..` traversal.
+workspace-relative. These helpers reject absolute paths, `..` traversal, and
+paths that follow existing symlinks.
 The symlink source is passed through to `ln -s`, so it may be an absolute path.
 Template files are shell scripts and can run ordinary shell commands; only use
 templates you trust.
@@ -89,3 +93,13 @@ tmux-workspace my-app ~/Projects/my-app ~/.config/tmux/web-template.sh
 
 When invoked from inside tmux, it creates and switches to a detached session.
 Outside tmux, it creates and attaches to the new session.
+
+## Development
+
+Run the regression checks with Python 3:
+
+```sh
+python3 tests/run.py
+```
+
+The loader checks require tmux and run against temporary isolated servers.

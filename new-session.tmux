@@ -4,10 +4,10 @@ set -eu
 plugin_dir="$(cd -P "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
 
 # Respect an explicit setting; otherwise use the plugin's actual install path.
-if ! tmux show-option -gq @workspace-plugin-dir >/dev/null 2>&1; then
+if ! tmux show-option -g @workspace-plugin-dir >/dev/null 2>&1; then
 	tmux set-option -gq @workspace-plugin-dir "$plugin_dir"
 fi
-if ! tmux show-option -gq @workspace-key >/dev/null 2>&1; then
+if ! tmux show-option -g @workspace-key >/dev/null 2>&1; then
 	tmux set-option -gq @workspace-key C-a
 fi
 workspace_key="$(tmux show-option -gqv @workspace-key)"

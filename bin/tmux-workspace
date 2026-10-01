@@ -24,7 +24,7 @@ fail() {
 expand_home() {
   case "$1" in
     '~') printf '%s\n' "$HOME" ;;
-    '~/'*) printf '%s/%s\n' "$HOME" "${1#~/}" ;;
+    '~/'*) printf '%s/%s\n' "$HOME" "${1#\~/}" ;;
     *) printf '%s\n' "$1" ;;
   esac
 }
@@ -44,12 +44,14 @@ if [[ -z "$session_name" ]]; then
   directory="${directory:-${workspace_root%/}/$session_name}"
 fi
 
-[[ "$session_name" =~ ^[A-Za-z0-9_.-]+$ ]] || fail 'session name may contain only letters, numbers, ., _, and -'
+[[ "$session_name" =~ ^[A-Za-z0-9_-]+$ ]] || fail 'session name may contain only letters, numbers, _, and - (tmux replaces periods with underscores)'
 if [[ -z "$directory" ]]; then
   directory="${workspace_root%/}/$session_name"
 fi
 directory="$(expand_home "$directory")"
 template="$(expand_home "$template")"
+[[ "$directory" == /* ]] || directory="$PWD/$directory"
+[[ "$template" == /* ]] || template="$PWD/$template"
 
 command -v tmux >/dev/null 2>&1 || fail 'tmux is not installed or not in PATH'
 [[ -f "$template" && -r "$template" ]] || fail "template is not readable: $template"
@@ -64,16 +66,28 @@ if [[ -e "$directory" ]]; then
 else
   mkdir -p -- "$directory"
 fi
-directory="$(cd "$directory" && pwd -P)"
+directory="$(cd -- "$directory" && pwd -P)"
 
 # Template helpers operate relative to the new workspace. Path-taking helpers
-# reject absolute paths and '..' components so a typo cannot write outside it.
+# reject absolute paths, '..' components, and existing symlinks so a typo cannot
+# write outside it.
 workspace_path() {
-  local relative="$1"
+  local relative="$1" remaining component path="$directory"
   [[ -n "$relative" && "$relative" != /* ]] || fail "expected a relative workspace path: $relative"
   case "/$relative/" in
     */../*) fail "workspace path cannot contain '..': $relative" ;;
   esac
+  remaining="$relative"
+  while [[ -n "$remaining" ]]; do
+    component="${remaining%%/*}"
+    if [[ "$remaining" == */* ]]; then
+      remaining="${remaining#*/}"
+    else
+      remaining=''
+    fi
+    path="$path/$component"
+    [[ ! -L "$path" ]] || fail "workspace path cannot follow a symlink: $relative"
+  done
   printf '%s/%s\n' "$directory" "$relative"
 }
 
@@ -121,7 +135,10 @@ export WORKSPACE_DIR="$directory"
 
 # Templates are user-authored shell scripts with the helper functions above.
 # shellcheck disable=SC1090
-source "$template"
+(
+  cd -- "$directory"
+  source "$template"
+)
 
 tmux new-session -d -s "$session_name" -c "$directory"
 if [[ -n "${TMUX:-}" ]]; then
